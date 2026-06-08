@@ -1,0 +1,33 @@
+# Node modules & lock files
+node_modules/
+package-lock.json
+yarn.lock
+
+# Generated / temporary files
+.DS_Store
+*.log
+*.tmp
+*.swp
+
+# Build artefacts
+dist/
+build/
+*.tsbuildinfo
+
+# Local SQLite DB (kept out of VCS – regenerated on first run)
+.conveyor/shared/kanban/kanban.db
+
+# Secrets & env files (never commit)
+.conveyor/**/.env
+
+# Metrics & alerts – local observability only
+.conveyor/metrics/
+.conveyor/alerts/
+
+# VS Code workspace settings
+.vscode/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
