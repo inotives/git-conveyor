@@ -16,6 +16,9 @@ build/
 
 # Local SQLite DB (kept out of VCS – regenerated on first run)
 .conveyor/shared/kanban/kanban.db
+.conveyor/shared/kanban/*.db-wal
+.conveyor/shared/kanban/*.db-shm
+.conveyor/shared/kanban/test-*
 
 # Secrets & env files (never commit)
 .conveyor/**/.env
