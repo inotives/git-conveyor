@@ -1,0 +1,23 @@
+{
+  "name": "git-conveyor",
+  "version": "0.1.0",
+  "description": "A self-driving, stack-agnostic assembly line for any Git project.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "conveyor:init": "node scripts/conveyor-init.js",
+    "conveyor:db:init": "node .conveyor/shared/kanban/local-db-client.js init",
+    "conveyor:sync": "node .conveyor/shared/kanban/sync-daemon.js",
+    "start:pm": "bash scripts/start-pm.sh",
+    "start:coder": "bash scripts/start-coder.sh",
+    "start:reviewer": "bash scripts/start-reviewer.sh",
+    "lint": "node --check .conveyor/shared/**/*.js && node --check scripts/*.js",
+    "test": "node --test --test-concurrency 1 tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  }
+}

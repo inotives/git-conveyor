@@ -1,0 +1,12 @@
+retry:
+  maxAttempts: 3
+  intervalMs: 60000
+
+sync:
+  cycleDelayMs: 30000
+
+alerts:
+  blockedDir: .conveyor/alerts/blocked
+
+metrics:
+  dir: .conveyor/metrics
