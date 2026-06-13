@@ -27,6 +27,9 @@ build/
 .conveyor/metrics/
 .conveyor/alerts/
 
+# CodeGraph local index
+.codegraph/
+
 # VS Code workspace settings
 .vscode/
 

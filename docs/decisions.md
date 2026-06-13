@@ -6,10 +6,10 @@ This document captures the key design decisions made during the grill-me review 
 
 ## 1. Conflict Resolution in Sync
 
-**Question:**  
+**Question:**
 If a human moves a card on GitHub at the same time an autonomous agent changes the task locally, how should the conflict be resolved?
 
-**Resolution:**  
+**Resolution:**
 Use a **remote-wins with execution lock** policy:
 - GitHub Projects V2 remains the source of truth.
 - If a task is currently `locked_by` an agent, the sync daemon should **not** interrupt that execution.
@@ -20,10 +20,10 @@ Use a **remote-wins with execution lock** policy:
 
 ## 2. Failure Handling for Hooks
 
-**Question:**  
+**Question:**
 When the Reviewer’s hook (test/lint/build) fails, how should the failure be communicated back to the Coder?
 
-**Resolution:**  
+**Resolution:**
 The Reviewer must provide a **complete failure comment/log**:
 - Include the full `stdout` and `stderr` from the failed hook.
 - Add a concise failure summary.
@@ -34,10 +34,10 @@ The Reviewer must provide a **complete failure comment/log**:
 
 ## 3. Skill Loading
 
-**Question:**  
+**Question:**
 How should the agents know which skills to use?
 
-**Resolution:**  
+**Resolution:**
 Each profile’s `INSTRUCTIONS.md` should declare which skills are enabled.  
 Additional skills are loaded from the profile’s own `skills/` folder.  
 No global skill registry is required.
@@ -46,10 +46,10 @@ No global skill registry is required.
 
 ## 4. Agent Timeout & Rollback
 
-**Question:**  
+**Question:**
 If a task exceeds its allowed runtime, what should happen?
 
-**Resolution:**  
+**Resolution:**
 Use a **hard timeout**:
 - `agent-runner.js` enforces the timeout.
 - If the timeout is hit, the agent stops, releases the lock, and rolls the task back to `To Do`.
@@ -59,10 +59,10 @@ Use a **hard timeout**:
 
 ## 5. Failure Logs vs Short-Lived Branches
 
-**Question:**  
+**Question:**
 Should failed tasks create a short-lived PR branch, or use a local log folder?
 
-**Resolution:**  
+**Resolution:**
 Use a **local logs folder**, not short-lived branches:
 - Store failure logs in `.conveyor/logs/`.
 - Filename format: `YYYY-MM-DD__<task-id-or-name>.md`.
@@ -76,10 +76,10 @@ Use a **local logs folder**, not short-lived branches:
 
 ## 6. Retry Limit & Blocked Stage
 
-**Question:**  
+**Question:**
 How should the system prevent infinite retry loops?
 
-**Resolution:**  
+**Resolution:**
 If a task fails repeatedly, move it to a **Blocked** stage:
 - Retry count is tracked per task.
 - After the configured maximum retries (currently `3`), the task is moved to `Blocked`.
@@ -90,10 +90,10 @@ If a task fails repeatedly, move it to a **Blocked** stage:
 
 ## 7. Secret Management
 
-**Question:**  
+**Question:**
 How should secrets be stored and used?
 
-**Resolution:**  
+**Resolution:**
 Use **local `.env` files per profile**:
 - `.env` files are never committed.
 - A `.env.template` is provided and copied during initialization.
@@ -105,10 +105,10 @@ Use **local `.env` files per profile**:
 
 ## 8. Observability & Metrics
 
-**Question:**  
+**Question:**
 How should system observability be implemented?
 
-**Resolution:**  
+**Resolution:**
 Use **local JSON metrics logs**:
 - Store daily files in `.conveyor/metrics/YYYY-MM-DD.json`.
 - Log entries include:
@@ -123,10 +123,10 @@ Use **local JSON metrics logs**:
 
 ## 9. Sync Daemon Retry Policy
 
-**Question:**  
+**Question:**
 How should the sync daemon behave when GitHub or SQLite operations fail?
 
-**Resolution:**  
+**Resolution:**
 Use **fixed-interval retries**:
 - Maximum attempts: `3`.
 - Fixed back-off interval: `60` seconds.
@@ -139,10 +139,10 @@ Use **fixed-interval retries**:
 
 ## 10. Shared Configuration
 
-**Question:**  
+**Question:**
 Where should retry counts, intervals, and other operational settings live?
 
-**Resolution:**  
+**Resolution:**
 Store them in a shared config file:
 - `.conveyor/shared/configs.yaml`
 - Suggested keys:
@@ -156,10 +156,10 @@ Store them in a shared config file:
 
 ## 11. Local-Only Development Philosophy
 
-**Question:**  
+**Question:**
 Is this system intended for cloud or production use?
 
-**Resolution:**  
+**Resolution:**
 No.  
 The current scope is **purely local development**:
 - No cloud-hosted agents.
@@ -182,6 +182,156 @@ The current scope is **purely local development**:
 | Blocked tasks | Human validation required |
 | Config | `.conveyor/shared/configs.yaml` |
 | Runtime scope | Local-only, no cloud/prod |
+
+---
+
+## 13. Next Implementation Priority
+
+**Question:**
+Should the next implementation target be real GitHub Projects V2 sync, or should the local-only conveyor loop be hardened first?
+
+**Resolution:**
+Harden the **local-only conveyor loop first**:
+- GitHub sync remains deferred until the local Coder/Reviewer loop is deterministic.
+- The next slice should prove local task execution, hook failure handling, retry/blocking, Coder retry context, and metrics.
+- GitHub sync should later be treated as a transport layer over a reliable local state machine.
+
+---
+
+## 14. Reviewer Hook Ownership
+
+**Question:**
+Should Reviewer hooks be executed by `agent-runner.js`, or should they live inside the Reviewer adapter/profile behavior?
+
+**Resolution:**
+Hook orchestration belongs in **`agent-runner.js`**, driven by `conveyor.config.js`:
+- Hooks are deterministic pipeline mechanics, not model behavior.
+- The runner captures command, exit code, stdout, stderr, and timing consistently.
+- Reviewer model behavior may still evaluate quality, but hooks must not depend on the model voluntarily running the right commands.
+
+---
+
+## 15. Hook Failure Order
+
+**Question:**
+When Reviewer hooks fail, should the task transition happen immediately, or should a failure log be written first?
+
+**Resolution:**
+Always write the **failure log first**, then transition:
+- The Coder's next attempt needs concrete failure evidence.
+- Logs must include failed command, exit code, stdout, stderr, timestamp, retry count, and task metadata.
+- After the log is written, the runner increments retry count and moves the task to `To Do` or `Blocked`.
+
+---
+
+## 16. Retry Failure Types
+
+**Question:**
+What should count as a retry failure?
+
+**Resolution:**
+Any failed task attempt increments retry count:
+- non-zero adapter exit,
+- hook failure,
+- runner-enforced timeout,
+- runner error.
+
+Each log should include a `failure_type`, such as:
+- `adapter_exit`
+- `hook_failure`
+- `timeout`
+- `runner_error`
+
+---
+
+## 17. Timeout Boundaries
+
+**Question:**
+Should task timeout be global, or should adapter execution and hook execution have separate timeouts?
+
+**Resolution:**
+Use **separate timeouts**:
+- Agent adapter timeout is role-specific.
+- Hook timeout is shared unless a hook-specific override is added later.
+- Timeouts must produce failure logs and increment retry count.
+
+Suggested config shape:
+
+```yaml
+agents:
+  coder:
+    timeoutMs: 900000
+  reviewer:
+    timeoutMs: 600000
+
+hooks:
+  timeoutMs: 300000
+```
+
+---
+
+## 18. Metrics Format
+
+**Question:**
+Should metrics only record task transitions, or lower-level runner events too?
+
+**Resolution:**
+Record lower-level events as **JSON lines**:
+- Store daily files in `.conveyor/metrics/YYYY-MM-DD.jsonl`.
+- Write one event per line for cheap local auditability and simple CSV export later.
+
+Minimum event types:
+- `task_claimed`
+- `adapter_started`
+- `adapter_finished`
+- `hook_started`
+- `hook_finished`
+- `task_retried`
+- `task_blocked`
+- `task_transitioned`
+- `runner_error`
+
+---
+
+## 19. Coder Retry Context
+
+**Question:**
+Should the Coder automatically receive the latest failure log for its task?
+
+**Resolution:**
+Yes. The runner should inject the latest matching `.conveyor/logs/` entry into the Coder task context:
+- Retry quality should not depend on model-driven file discovery.
+- The injected context should be bounded so large logs do not overwhelm the prompt.
+- Matching should use task ID or task number.
+
+---
+
+## 20. Security Checks
+
+**Question:**
+Should `security-checks` be a normal shell hook or a built-in runner check?
+
+**Resolution:**
+Treat `security-checks` as a **normal shell hook** with a repo-provided default command:
+- Every hook should have the same execution, timeout, logging, and retry semantics.
+- Projects can replace the default with `gitleaks`, `trufflehog`, or a custom command without changing runner code.
+
+---
+
+## 21. Local-Loop Vertical Slice
+
+**Question:**
+Should local-loop hardening be implemented as one vertical slice or as broad subsystems?
+
+**Resolution:**
+Implement **one vertical slice first**:
+- Reviewer runs configured hooks.
+- A hook fails.
+- The runner writes `.conveyor/logs/YYYY-MM-DD__task-<number>.md`.
+- Retry count increments.
+- The task returns to `To Do` or moves to `Blocked`.
+- The Coder's next run receives the latest failure log in context.
+- Metrics JSONL records the key events.
 
 ---
 

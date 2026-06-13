@@ -29,6 +29,15 @@
 
 `git-conveyor` turns your GitHub Issues into autonomous work orders. A developer works interactively with the PM agent to scope and decompose issues, which are then pushed to GitHub as structured tasks. From there, the Coder and Reviewer agents take over — continuously polling a local SQLite Kanban, claiming tasks atomically, executing them headlessly via Pi (backed by OpenRouter models), and advancing them from To Do all the way to Done without any further human interaction.
 
+### Current implementation status
+
+The project is currently in **late Phase 1 / early Phase 2**:
+
+- The local scaffold, profiles, config, SQLite schema, launcher scripts, adapter structure, retry config, and `Blocked` stage exist.
+- The local agent loop has basic task claiming, adapter execution, success transitions, retry counting, and blocked-state movement.
+- GitHub Projects V2 pull/push sync is still deferred. The sync daemon currently provides the local retry/alert structure that real GitHub transport will use later.
+- The next implementation target is local-loop hardening: runner-owned hooks, failure logs, separate timeouts, Coder retry context, and JSONL metrics.
+
 ### Design goals
 
 | Goal | How it's achieved |
@@ -37,7 +46,7 @@
 | **Engine-agnostic** | Any agent role can be pointed at Claude Code, Codex, OpenCode, Pi, or any headless CLI |
 | **Drop-in** | `conveyor init` scaffolds `.conveyor/` into any existing project in seconds |
 | **Race-condition safe** | SQLite WAL mode with `busy_timeout` ensures atomic task claiming across all agents |
-| **Human-overridable** | GitHub Projects V2 remains the source of truth; move a card to immediately redirect agents |
+| **Human-overridable** | GitHub Projects V2 remains the intended source of truth once real sync is implemented |
 
 ### What it is not
 
@@ -101,6 +110,8 @@ A background `sync-daemon.js` runs independently, continuously reconciling:
 - **Push**: local status changes flagged by `local_changes_pending = 1` → GitHub
 
 This decouples agents from GitHub API rate limits and latency. All agent operations are local; GitHub is updated asynchronously.
+
+**Implementation note:** real GitHub API pull/push is not the next slice. The sync daemon should keep its retry/alert contract, but GitHub transport work is deferred until the local runner behavior is deterministic and covered by tests.
 
 ---
 
@@ -190,6 +201,8 @@ export default {
     test: 'npm test',             // Replace with: pytest, go test ./..., cargo test, etc.
     lint: 'npm run lint',         // Optional pre-review lint step
     build: 'npm run build',       // Optional post-code build verification
+    'security-checks': 'node .conveyor/shared/hooks/security-checks.js',
+    timeoutMs: 300000,
   },
 
   // --- Kanban stages (matches your GitHub Projects board exactly) ---
@@ -198,6 +211,7 @@ export default {
     'To Do',
     'In Progress',
     'Review',
+    'Blocked',
     'Done',
   ],
 
@@ -214,6 +228,7 @@ export default {
       targetStage: 'To Do',
       nextStage: 'Review',
       pollInterval: 12000,
+      timeoutMs: 900000,
     },
     reviewer: {
       engine: 'pi',
@@ -222,7 +237,8 @@ export default {
       nextStageSuccess: 'Done',
       nextStageFailure: 'To Do',  // Rolls back for Coder to retry
       pollInterval: 15000,
-      runHooks: ['test', 'lint'],  // Hooks to run before marking as Done
+      timeoutMs: 600000,
+      runHooks: ['test', 'lint', 'security-checks'],
     },
   },
 
@@ -278,12 +294,29 @@ GITHUB_TOKEN=your_pat_here        # Needs: read:project, write:project, repo
 ### Reviewer
 
 **Engine**: Pi (`qwen-2.5-coder` default)  
-**Responsibility**: Runs configured hooks (`test`, `lint`, `build`), evaluates output quality, and either advances the task to Done or rolls it back to To Do with a failure note for the Coder to retry.
+**Responsibility**: Evaluates output quality after deterministic runner-owned hooks (`test`, `lint`, `build`, `security-checks`) pass. The runner executes hooks, captures stdout/stderr, writes failure logs, and either advances the task to Done or rolls it back to To Do / Blocked based on retry count.
 
 **INSTRUCTIONS.md should define**:
 - What constitutes a passing review beyond test exit codes
 - How to write rollback notes for the Coder to act on
 - Any security or performance checks to apply
+
+---
+
+## Local-Loop Hardening
+
+Before implementing real GitHub Projects V2 sync, the local Coder/Reviewer loop must prove one complete failure path:
+
+1. Reviewer reaches a task in `Review`.
+2. `agent-runner.js` executes configured hooks from `conveyor.config.js`.
+3. A hook fails or times out.
+4. The runner writes `.conveyor/logs/YYYY-MM-DD__task-<number>.md` with a summary, embedded JSON metadata, command, exit code, stdout, stderr, retry count, and timestamps.
+5. Retry count increments.
+6. The task returns to `To Do` or moves to `Blocked` after max retries.
+7. The Coder's next prompt receives the latest matching failure log as bounded retry context.
+8. `.conveyor/metrics/YYYY-MM-DD.jsonl` records runner events such as task claim, adapter start/end, hook start/end, retry, blocked transition, normal transition, and runner error.
+
+Adapter execution timeouts and hook execution timeouts are separate. Any non-zero adapter exit, hook failure, timeout, or runner error is a failed task attempt and increments retry count.
 
 ---
 

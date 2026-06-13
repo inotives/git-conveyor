@@ -4,15 +4,21 @@
 
 `git-conveyor` drops a multi‑agent development pipeline directly into an existing repository.  It orchestrates a **human‑in‑the‑loop Project Manager** and fully autonomous **Coder** and **Reviewer** agents that poll a local SQLite Kanban, claim tasks atomically, execute them headlessly via Pi, and advance them through the pipeline without further human interaction.
 
+## Current status
+
+`git-conveyor` is currently in **late Phase 1 / early Phase 2**. The local scaffold, profiles, config, SQLite schema, launcher scripts, adapters, retry config, and basic agent loop exist. The next implementation slice is local-loop hardening: runner-owned hooks, failure logs, separate timeouts, Coder retry context, and JSONL metrics.
+
+Real GitHub Projects V2 pull/push sync is still deferred. The sync daemon currently provides the local retry/alert structure that the GitHub transport layer will use later.
+
 ## Features
 
 - **Drop‑in scaffolding** – `conveyor init` injects a complete `.conveyor/` directory into any project.
 - **Stack‑agnostic** – all project‑specific settings live in `conveyor.config.js`; the runners are engine‑agnostic (Claude, Codex, OpenCode, Pi, or custom adapters).
 - **SQLite‑backed Kanban** – atomic task claiming using WAL mode ensures race‑condition safety across agents.
-- **GitHub Projects V2 integration** – the source of truth for task status lives on GitHub; a sync daemon mirrors it locally.
-- **Robust failure handling** – automatic retries, fixed‑interval back‑off, and markdown alert files (`.conveyor/alerts/blocked/…`) for human intervention.
-- **Observability** – lightweight JSON metrics stored in `.conveyor/metrics/` (throughput, latency, hook failures).
-- **Security checks** – `security-checks` skill prevents accidental secret leakage.
+- **GitHub Projects V2 integration** – planned transport layer; local sync retry/alert scaffolding exists now.
+- **Robust failure handling** – retry/blocking mechanics exist; failure logs, timeouts, and hook orchestration are the next slice.
+- **Observability** – planned lightweight JSONL metrics stored in `.conveyor/metrics/`.
+- **Security checks** – planned as a normal runner-owned hook, replaceable per project.
 - **Extensible** – add new skills or custom engine adapters in each profile’s `skills/` folder.
 
 ## Quick start (local development)
@@ -32,7 +38,7 @@ cp .conveyor/profiles/coder/.env.template .conveyor/profiles/coder/.env
 # 4️⃣ Initialise the SQLite Kanban schema
 npm run conveyor:db:init
 
-# 5️⃣ Start the sync daemon (foreground for first test)
+# 5️⃣ Start the sync daemon (foreground for first local test)
 node .conveyor/shared/kanban/sync-daemon.js
 
 # 6️⃣ Launch agents (in separate terminals)
@@ -41,7 +47,7 @@ node .conveyor/shared/kanban/sync-daemon.js
 # optional: ./scripts/start-pm.sh for interactive issue scoping
 ```
 
-The agents will now pull issues from your GitHub Project, break them into deterministic tasks, code them, run tests/lint/security checks, and push finished work back to GitHub.
+The local agents can now exercise the SQLite-backed conveyor loop. Full GitHub Project pull/push, deterministic runner-owned hooks, failure-log injection, and JSONL metrics are still being implemented.
 
 ## Configuration (conveyor.config.js)
 

@@ -4,6 +4,16 @@
 
 ---
 
+## Current Progress
+
+**Current phase:** late Phase 1 / early Phase 2.
+
+Phase 1 is complete enough to build on: the `.conveyor/` scaffold, profiles, config, SQLite schema, launcher scripts, retry config, and `Blocked` stage are present. Phase 2 has started with local task claiming, transitions, retry counting, blocked-state movement, and sync alert helpers.
+
+The next implementation target is **local-loop hardening**, not GitHub Projects V2 sync. Real GitHub pull/push remains deferred until the local Coder/Reviewer loop is deterministic, logged, observable, and regression-tested.
+
+---
+
 ## Phase 1 – Environment Setup
 **Goal**: Establish a local development ecosystem with pipeline components.
 
@@ -24,6 +34,20 @@
 | 1 | **Retry Logic in Sync Daemon** | Patch `sync-daemon.js` to wrap GitHub/API calls in `retryWithFixedInterval` (3 attempts, 60 s fixed interval). Use `syncHelper.js` for back-off + alert generation. |
 | 2 | **Agent Rollback System** | Reviewer agent:<br>• Writes failure logs (JSON + markdown) to `.conveyor/logs/` and alerts to `.conveyor/alerts/blocked/`.<br>• Moves task back to `To Do` after 3+ consecutive failures.<br>Coder agent reads failure logs from `.conveyor/logs/`. |
 | 3 | **Offline Resilience** | Agents retain their `locked_by` claim in SQLite while daemon is down. Daemon auto-resyncs on restart. |
+
+### Next Vertical Slice: Local-Loop Hardening
+
+Implement this before real GitHub sync:
+
+| # | Step | Details |
+|---|------|---------|
+| 1 | **Runner-Owned Hooks** | `agent-runner.js` executes configured hooks from `conveyor.config.js`, including `security-checks`, instead of relying on the Reviewer model to run them. |
+| 2 | **Hook Failure Logs** | On hook failure, write `.conveyor/logs/YYYY-MM-DD__task-<number>.md` before transitioning the task. Include summary, JSON metadata, command, exit code, stdout, stderr, retry count, and timestamps. |
+| 3 | **Retry + Block Transition** | Any non-zero adapter exit, hook failure, timeout, or runner error increments retry count. If the configured max retry count is reached, move the task to `Blocked`; otherwise return it to `To Do`. |
+| 4 | **Previous Failure Context** | When the Coder claims a retry task, inject the latest matching failure log into the task context so the next attempt is informed by the actual failure. |
+| 5 | **Separate Timeouts** | Add separate timeouts for agent adapter execution and hook execution. Adapter timeouts are role-specific; hook timeouts are shared unless overridden. |
+| 6 | **Metrics JSONL** | Write `.conveyor/metrics/YYYY-MM-DD.jsonl`, one event per line. Minimum events: `task_claimed`, `adapter_started`, `adapter_finished`, `hook_started`, `hook_finished`, `task_retried`, `task_blocked`, `task_transitioned`, `runner_error`. |
+| 7 | **Regression Tests** | Prove one full failure path: Reviewer hook fails, log is written, retry increments, task returns to `To Do` or `Blocked`, Coder receives latest failure context, and metrics are emitted. |
 
 ---
 
@@ -52,6 +76,11 @@
 ## Final Testing Checklist
 - [ ] Sync daemon retries GitHub calls 3× before alerting.
 - [ ] Reviewer rolls tasks to `To Do` after 3+ failures.
+- [ ] Reviewer hooks are executed by the runner with captured stdout/stderr.
+- [ ] Hook failures create markdown logs with embedded JSON metadata.
+- [ ] Coder retry prompts include the latest matching failure log.
+- [ ] Adapter and hook timeouts are enforced separately.
+- [ ] Metrics JSONL records claim, adapter, hook, retry, blocked, transition, and error events.
 - [ ] Agents claim/delete branches atomically and cleanly.
 - [ ] Metrics and alerts persist through daemon restarts.
 - [ ] Security checks prevent secrets from entering the repo.
