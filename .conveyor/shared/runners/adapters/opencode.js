@@ -1,7 +1,7 @@
 import { spawnSync } from 'child_process';
 
 export default {
-  execute({ task, systemPrompt, env }) {
+  execute({ task, systemPrompt, env, timeoutMs }) {
     console.log(`[opencode] Executing task #${task.task_number}...`);
     const prompt = [
       `Task: ${task.title}`,
@@ -16,8 +16,9 @@ export default {
       stdio: 'inherit',
       env: { ...env, OPENCODE_API_KEY: env.OPENCODE_API_KEY },
       shell: true,
+      timeout: timeoutMs,
     });
 
-    return result.status;
+    return result.status ?? 1;
   },
 };

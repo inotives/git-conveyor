@@ -10,3 +10,6 @@ alerts:
 
 metrics:
   dir: .conveyor/metrics
+
+hooks:
+  timeoutMs: 300000

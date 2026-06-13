@@ -23,6 +23,14 @@ describe('conveyor.config.js', () => {
     const config = (await import('../conveyor.config.js')).default;
     assert.equal(config.agents.reviewer.nextStageFailure, 'To Do');
     assert.equal(config.agents.reviewer.nextStageSuccess, 'Done');
+    assert.equal(config.agents.reviewer.timeoutMs, 600000);
+    assert.ok(config.agents.reviewer.runHooks.includes('security-checks'));
+  });
+
+  it('configures security checks as a normal hook', async () => {
+    const config = (await import('../conveyor.config.js')).default;
+    assert.equal(config.hooks['security-checks'], 'node .conveyor/shared/hooks/security-checks.js');
+    assert.equal(config.hooks.timeoutMs, 300000);
   });
 
   it('includes retry settings via configs.yaml', async () => {
@@ -30,5 +38,7 @@ describe('conveyor.config.js', () => {
     const cfg = db.loadConfig();
     assert.equal(cfg.retry.maxAttempts, 3);
     assert.equal(cfg.retry.intervalMs, 60000);
+    assert.equal(cfg.metrics.dir, '.conveyor/metrics');
+    assert.equal(cfg.hooks.timeoutMs, 300000);
   });
 });
