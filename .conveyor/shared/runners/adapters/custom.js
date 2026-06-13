@@ -1,7 +1,7 @@
 import { spawnSync } from 'child_process';
 
 export default {
-  execute({ task, systemPrompt, env }) {
+  execute({ task, systemPrompt, env, timeoutMs }) {
     console.log(`[custom] Executing task #${task.task_number}...`);
     console.log('Custom adapter — replace this with your engine CLI.');
 
@@ -20,8 +20,9 @@ export default {
       stdio: 'inherit',
       env,
       shell: true,
+      timeout: timeoutMs,
     });
 
-    return result.status;
+    return result.status ?? 1;
   },
 };

@@ -26,6 +26,7 @@ build/
 # Metrics & alerts – local observability only
 .conveyor/metrics/
 .conveyor/alerts/
+.conveyor/logs/
 
 # CodeGraph local index
 .codegraph/

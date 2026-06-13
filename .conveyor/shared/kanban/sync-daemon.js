@@ -5,12 +5,13 @@ import { fileURLToPath } from 'url';
 import { loadConfig, getDb, allTasks } from './local-db-client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 const config = loadConfig();
 const cycleDelay = config.sync?.cycleDelayMs ?? 30000;
 const maxRetries = config.retry?.maxAttempts ?? 3;
 const retryIntervalMs = config.retry?.intervalMs ?? 60000;
 const blockedDir = config.alerts?.blockedDir
-  ? (config.alerts.blockedDir.startsWith('/') ? config.alerts.blockedDir : join(__dirname, '..', '..', config.alerts.blockedDir))
+  ? (config.alerts.blockedDir.startsWith('/') ? config.alerts.blockedDir : join(PROJECT_ROOT, config.alerts.blockedDir))
   : join(__dirname, '..', '..', 'alerts', 'blocked');
 
 export function retryWithFixedInterval(fn, attempts, intervalMs) {

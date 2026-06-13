@@ -25,31 +25,30 @@ function loadConfig() {
   const yaml = readFileSync(CONFIG_PATH, 'utf8');
   const cfg = {};
   const lines = yaml.split('\n');
-  let current = cfg;
+  let currentParent = null;
   for (const line of lines) {
+    const indent = line.match(/^\s*/)[0].length;
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const m = trimmed.match(/^(\w+):\s*(.*)$/);
-    if (m) {
-      const key = m[1];
-      const val = m[2].trim();
-      if (val === '') {
-        current[key] = {};
-        current = current[key];
-      } else if (current === cfg) {
-        current[key] = {};
-        current = current[key];
-      } else {
-        current[key] = isNaN(val) ? val : Number(val);
-      }
-    } else if (/^\s{2}/.test(line)) {
-      const m2 = trimmed.match(/^(\w+):\s*(.*)$/);
-      if (m2) {
-        current[m2[1]] = isNaN(m2[2]) ? m2[2].trim() : Number(m2[2]);
-      }
+    const m = trimmed.match(/^([\w-]+):\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    const val = m[2].trim();
+    if (indent === 0) {
+      cfg[key] = val === '' ? {} : parseYamlValue(val);
+      currentParent = val === '' ? key : null;
+    } else {
+      if (!currentParent) continue;
+      cfg[currentParent] ??= {};
+      cfg[currentParent][key] = parseYamlValue(val);
     }
   }
   return cfg;
+}
+
+function parseYamlValue(val) {
+  if (val === '') return {};
+  return isNaN(val) ? val : Number(val);
 }
 
 function initDb() {
@@ -96,7 +95,7 @@ function incrementRetry(taskId) {
   const newCount = task.retry_count + 1;
   const blocked = newCount >= task.max_retries;
   conn.prepare(
-    `UPDATE tasks SET retry_count = ?, stage = ?, status = ?, updated_at = datetime('now') WHERE id = ?`
+    `UPDATE tasks SET retry_count = ?, stage = ?, status = ?, locked_by = NULL, locked_at = NULL, local_changes_pending = 1, updated_at = datetime('now') WHERE id = ?`
   ).run(newCount, blocked ? 'Blocked' : 'To Do', blocked ? 'Blocked' : 'To Do', taskId);
   return { blocked, retryCount: newCount };
 }

@@ -81,10 +81,16 @@ describe('Kanban DB Client', () => {
 
   it('increments retry count and blocks after max', () => {
     db.transitionTask(taskId, 'To Do', 'To Do');
+    db.claimTask(taskId, 'test-agent');
 
     let r = db.incrementRetry(taskId);
     assert.equal(r.blocked, false);
     assert.equal(r.retryCount, 1);
+
+    let task = db.nextTask('To Do');
+    assert.ok(task);
+    assert.equal(task.locked_by, null);
+    assert.equal(task.local_changes_pending, 1);
 
     r = db.incrementRetry(taskId);
     assert.equal(r.blocked, false);
@@ -94,6 +100,7 @@ describe('Kanban DB Client', () => {
 
     const tasks = db.allTasks({ stage: 'Blocked' });
     assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].locked_by, null);
   });
 
   it('resets retry counter', () => {

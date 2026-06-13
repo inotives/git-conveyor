@@ -1,41 +1,43 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { spawnSync } from 'child_process';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI = join(__dirname, '..', '.conveyor', 'shared', 'kanban', 'cli.js');
-const DB_PATH = join(__dirname, '..', '.conveyor', 'shared', 'kanban', 'kanban.db');
-const DB_CLIENT = join(__dirname, '..', '.conveyor', 'shared', 'kanban', 'local-db-client.js');
+let cli;
+let db;
 
 function run(args) {
-  return spawnSync('node', [CLI, ...args], { encoding: 'utf8' });
+  const lines = [];
+  const errors = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...parts) => lines.push(parts.join(' '));
+  console.error = (...parts) => errors.push(parts.join(' '));
+  try {
+    const status = cli.main(args);
+    return { status, stdout: lines.join('\n'), stderr: errors.join('\n') };
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
 }
 
 describe('CLI', () => {
-  before(() => {
-    // Ensure DB has schema and a task
-    spawnSync('node', [DB_CLIENT, 'init'], { encoding: 'utf8' });
-    // Clear stale data, seed fresh
-    const seed = spawnSync('node', ['--input-type=module', '-e', `
-      import Database from 'better-sqlite3';
-      const db = new Database('${DB_PATH}');
-      db.pragma('journal_mode = WAL');
-      db.prepare('DELETE FROM tasks').run();
-      db.prepare("INSERT INTO tasks (task_number, title, description, stage, status) VALUES (1, 'CLI test task', 'Testing CLI', 'To Do', 'To Do')").run();
-      db.close();
-    `], { encoding: 'utf8' });
-    if (seed.status !== 0) console.error('Seed failed:', seed.stderr);
+  before(async () => {
+    cli = await import('../.conveyor/shared/kanban/cli.js');
+    db = await import('../.conveyor/shared/kanban/local-db-client.js');
+    db.initDb();
+    const conn = db.getDb();
+    conn.prepare('DELETE FROM tasks').run();
+    db.upsertTask({
+      task_number: 1,
+      title: 'CLI test task',
+      description: 'Testing CLI',
+      stage: 'To Do',
+      status: 'To Do',
+    });
   });
 
   after(() => {
-    spawnSync('node', ['--input-type=module', '-e', `
-      import Database from 'better-sqlite3';
-      const db = new Database('${DB_PATH}');
-      db.prepare('DELETE FROM tasks').run();
-      db.close();
-    `], { encoding: 'utf8' });
+    const conn = db.getDb();
+    conn.prepare('DELETE FROM tasks').run();
   });
 
   it('shows help with no arguments', () => {
